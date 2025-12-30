@@ -1,10 +1,9 @@
 export type SensorReading = {
-	ts: number // unix ms
+	timestamp: number // unix ms
 	sensorId: string
 	wetness: number // %
 	temperature: number // °C
 	charge: number // %
-	timestamp: any
 }
 
 export type Field = {
