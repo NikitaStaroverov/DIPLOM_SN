@@ -3,7 +3,7 @@ import { aggregateStatus, metricStatus } from "./status";
 
 export function aggregateHour(
   readings: SensorReading[],
-  thresholds: any
+  thresholds: any,
 ): Status {
   const statuses: Status[] = [];
 
@@ -13,21 +13,21 @@ export function aggregateHour(
       thresholds.wetness.warnMin,
       thresholds.wetness.warnMax,
       thresholds.wetness.dangerMin,
-      "min"
+      "min",
     );
     const temp = metricStatus(
       r.temperature,
       thresholds.temperature.warnMin,
       thresholds.temperature.warnMax,
       thresholds.temperature.dangerMax,
-      "max"
+      "max",
     );
     const chg = metricStatus(
       r.charge,
       thresholds.charge.warnMin,
       thresholds.charge.warnMax,
       thresholds.charge.dangerMin,
-      "min"
+      "min",
     );
 
     statuses.push(wet, temp, chg);

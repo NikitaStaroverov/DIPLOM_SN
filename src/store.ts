@@ -1,6 +1,11 @@
-import { create } from 'zustand';
-import type { SensorReading, Thresholds, Field } from './types';
-import { loadSettings, saveSettings, defaultSettings, type SettingsState } from './services/storage';
+import { create } from "zustand";
+import type { SensorReading, Thresholds, Field } from "./types";
+import {
+  loadSettings,
+  saveSettings,
+  defaultSettings,
+  type SettingsState,
+} from "./services/storage";
 
 type AuthState = {
   isAuthed: boolean;
@@ -43,7 +48,12 @@ export const useAppStore = create<AppState>((set, get) => {
     resetToDefault: () => {
       saveSettings(defaultSettings);
       const s = loadSettings();
-      set({ thresholds: s.thresholds, fields: s.fields, username: s.auth.username, isAuthed: false });
+      set({
+        thresholds: s.thresholds,
+        fields: s.fields,
+        username: s.auth.username,
+        isAuthed: false,
+      });
     },
     setCredentials: (u, p) => {
       const s = loadSettings();
@@ -57,10 +67,12 @@ export const useAppStore = create<AppState>((set, get) => {
     readingsByField: {},
 
     appendReading: (fieldId, r) => {
-      set(state => {
+      set((state) => {
         const prev = state.readingsByField[fieldId] ?? [];
         const next = [...prev, r].slice(-20_000); // safety cap
-        return { readingsByField: { ...state.readingsByField, [fieldId]: next } };
+        return {
+          readingsByField: { ...state.readingsByField, [fieldId]: next },
+        };
       });
     },
     setThresholds: (t) => {
@@ -75,7 +87,11 @@ export const useAppStore = create<AppState>((set, get) => {
     },
     reloadFromStorage: () => {
       const s = loadSettings();
-      set({ fields: s.fields, thresholds: s.thresholds, username: s.auth.username });
+      set({
+        fields: s.fields,
+        thresholds: s.thresholds,
+        username: s.auth.username,
+      });
     },
   };
 });

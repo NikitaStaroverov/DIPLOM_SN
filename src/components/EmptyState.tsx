@@ -1,6 +1,12 @@
-import React from 'react';
+import React from "react";
 
-export default function EmptyState({ title, hint }: { title: string; hint?: string }){
+export default function EmptyState({
+  title,
+  hint,
+}: {
+  title: string;
+  hint?: string;
+}) {
   return (
     <div className="card">
       <div className="h2">{title}</div>
