@@ -27,8 +27,7 @@ export default function ApiWeatherPage() {
     <div className="card">
       <div className="h1">API (Яндекс.Погода)</div>
       <div className="muted" style={{ marginBottom: 12 }}>
-        Текущие значения температуры/влажности по координатам поля. Для работы
-        нужен ключ и (скорее всего) прокси из-за CORS.
+        Текущие значения температуры/влажности по координатам поля.
       </div>
 
       <FieldTabs fields={fields} activeId={fieldId} onChange={setFieldId} />

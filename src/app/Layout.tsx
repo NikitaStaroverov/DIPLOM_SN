@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAppStore } from "../store";
+import wetherIcon from "./weatherIcon.svg";
 
 function linkClass({ isActive }: { isActive: boolean }) {
   return `pill ${isActive ? "pillActive" : ""}`;
@@ -16,11 +17,12 @@ export default function Layout() {
       <div className="nav">
         <div className="navInner">
           <div className="brand">
-            <span className="dot" style={{ background: "var(--accent)" }} />
-            <span>Система полива</span>
-            <span className="muted" style={{ fontWeight: 500, fontSize: 12 }}>
-              демо
-            </span>
+            <img
+              src={wetherIcon}
+              alt=""
+              style={{ width: "28px", height: "28px" }}
+            />
+            <span>Система мониторинга</span>
           </div>
 
           <div className="row" style={{ gap: 10 }}>

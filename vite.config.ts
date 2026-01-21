@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   base: "/DIPLOM_SN/",
   server: {
-    port: 5173,
+    proxy: {
+      "/api": "http://localhost:3001",
+    },
   },
 });

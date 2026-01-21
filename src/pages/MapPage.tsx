@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import FieldTabs from "../components/FieldTabs";
+import { FieldStatusBadge } from "../components/FieldStatusBadge";
 import { useAppStore } from "../store";
 import type { SensorReading, Status } from "../types";
 import { aggregateStatus, metricStatus } from "../utils/status";
@@ -52,9 +53,11 @@ export default function MapPage() {
     [field?.sensors],
   );
 
-  const sensorStatus = (id: string): Status => {
+  const sensorStatus = (
+    id: string,
+  ): { wet: Status; temp: Status; chg: Status } => {
     const r = latestBySensor.get(id);
-    if (!r) return "warn";
+    if (!r) return { wet: "warn", temp: "warn", chg: "warn" };
     const wet = metricStatus(
       r.wetness,
       thresholds.wetness.warnMin,
@@ -76,7 +79,8 @@ export default function MapPage() {
       thresholds.charge.dangerMin,
       "min",
     );
-    return aggregateStatus([wet, temp, chg]);
+
+    return { wet, temp, chg };
   };
 
   if (!field) return null;
@@ -84,76 +88,28 @@ export default function MapPage() {
   return (
     <div className="card">
       <div className="h1">Карта датчиков</div>
+      <div className="muted" style={{ marginBottom: 12 }}>
+        Т - температура, В - влажность, З - заряд.
+      </div>
 
       <FieldTabs fields={fields} activeId={fieldId} onChange={setFieldId} />
 
       <div style={{ height: 14 }} />
 
-      <div className="card" style={{ padding: 12 }}>
-        <svg width="100%" viewBox="0 0 820 420" style={{ display: "block" }}>
-          <rect
-            x="10"
-            y="10"
-            width="800"
-            height="400"
-            rx="16"
-            fill="rgba(255,255,255,.03)"
-            stroke="rgba(255,255,255,.08)"
-          />
-          <text x="30" y="42" fill="rgba(123, 142, 209, 0.85)" fontSize="16">
-            {field.name}
-          </text>
+      <div className="card-sheme">
+        {layout.map((s, idx) => {
+          const st = sensorStatus(s.id);
 
-          {layout.map((s, idx) => {
-            const st = sensorStatus(s.id);
-            const c = statusColor(st);
-            const r = latestBySensor.get(s.id);
-            return (
-              <g key={s.id}>
-                {/* connecting lines - decorative */}
-                {idx > 0 && (
-                  <line
-                    x1={layout[idx - 1].x}
-                    y1={layout[idx - 1].y}
-                    x2={s.x}
-                    y2={s.y}
-                    stroke="rgba(255,255,255,.08)"
-                  />
-                )}
-                <circle
-                  cx={s.x}
-                  cy={s.y}
-                  r="26"
-                  fill="rgba(0,0,0,.15)"
-                  stroke="rgba(255,255,255,.10)"
-                />
-                <circle cx={s.x} cy={s.y} r="18" fill={c} opacity="0.85" />
-                <text
-                  x={s.x}
-                  y={s.y + 5}
-                  textAnchor="middle"
-                  fill="#0b1020"
-                  fontWeight="700"
-                  fontSize="12"
-                >
-                  {s.id}
-                </text>
-
-                {r && (
-                  <text
-                    x={s.x}
-                    y={s.y + 42}
-                    textAnchor="middle"
-                    fill="rgba(106, 122, 180, 0.75)"
-                    fontSize="11"
-                  >
-                    {`${r.wetness}% / ${r.temperature}°C / ${r.charge}%`}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
+          return (
+            <FieldStatusBadge
+              wetness={st.wet}
+              temperature={st.temp}
+              charge={st.chg}
+              id={s.id}
+              size={240}
+            />
+          );
+        })}
       </div>
     </div>
   );

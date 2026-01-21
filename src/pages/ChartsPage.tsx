@@ -119,7 +119,6 @@ export default function ChartsPage() {
                 <XAxis dataKey="t" tick={{ fontSize: 11 }} minTickGap={24} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Legend />
                 <Line
                   type="monotone"
                   dataKey={averageSelectedParam}

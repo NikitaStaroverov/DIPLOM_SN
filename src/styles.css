@@ -187,3 +187,50 @@ select {
   color: #646d7c;
   background: #f8fafc;
 }
+
+.card-sheme {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.field-badge {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.field-badge .big {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.field-badge .small {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.field-badge .good {
+  fill: #22c55e;
+}
+.field-badge .warn {
+  fill: #facc15;
+}
+.field-badge .bad {
+  fill: #ef4444;
+}
+
+.field-badge .lbl {
+  font:
+    14px Arial,
+    sans-serif;
+  fill: #0f172a;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.field-badge .legend {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.9;
+}
