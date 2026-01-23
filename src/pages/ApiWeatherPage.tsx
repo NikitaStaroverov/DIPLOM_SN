@@ -72,7 +72,7 @@ export default function ApiWeatherPage() {
         </div>
 
         <div className="card">
-          <div className="h2">Сырой ответ</div>
+          <div className="h2">Ответ API Яндекс.Погоды</div>
           <div
             className="card"
             style={{ padding: 12, background: "rgba(0,0,0,.18)" }}

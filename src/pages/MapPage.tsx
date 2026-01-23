@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import FieldTabs from "../components/FieldTabs";
 import { FieldStatusBadge } from "../components/FieldStatusBadge";
 import { useAppStore } from "../store";
 import type { SensorReading, Status } from "../types";
-import { aggregateStatus, metricStatus } from "../utils/status";
+import { metricStatus } from "../utils/status";
 
 function statusColor(s: Status) {
   return s === "good"
@@ -15,14 +15,26 @@ function statusColor(s: Status) {
 }
 
 function makeLayout(sensorIds: string[]) {
-  // Простая «условная» раскладка: сетка 5xN
-  const cols = 5;
+  const cols = 5; // ← ПЯТЬ кружков в ряд
+  const stepX = 210; // расстояние между центрами по X
+  const stepY = 210; // расстояние между рядами по Y
+  const startX = 130; // отступ слева
+  const startY = 130; // центр первого ряда
+
   return sensorIds.map((id, idx) => {
-    const x = (idx % cols) * 150 + 90;
-    const y = Math.floor(idx / cols) * 110 + 80;
-    return { id, x, y };
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+
+    return {
+      id,
+      x: startX + col * stepX,
+      y: startY + row * stepY,
+      row,
+    };
   });
 }
+
+const badgeSize = 200;
 
 export default function MapPage() {
   const fields = useAppStore((s) => s.fields);
@@ -52,6 +64,29 @@ export default function MapPage() {
     () => makeLayout(field?.sensors ?? []),
     [field?.sensors],
   );
+
+  const rows = useMemo(() => {
+    const ys = Array.from(new Set(layout.map((p) => p.y))).sort(
+      (a, b) => a - b,
+    );
+    return ys;
+  }, [layout]);
+
+  const colsX = useMemo(() => {
+    return Array.from(new Set(layout.map((p) => p.x))).sort((a, b) => a - b);
+  }, [layout]);
+
+  const width = useMemo(() => {
+    const xs = layout.map((p) => p.x);
+    const maxX = xs.length ? Math.max(...xs) : 0;
+    return maxX + 130; // запас справа
+  }, [layout]);
+
+  const height = useMemo(() => {
+    const ys = layout.map((p) => p.y);
+    const maxY = ys.length ? Math.max(...ys) : 0;
+    return maxY + 130; // запас снизу
+  }, [layout]);
 
   const sensorStatus = (
     id: string,
@@ -96,18 +131,60 @@ export default function MapPage() {
 
       <div style={{ height: 14 }} />
 
-      <div className="card-sheme">
-        {layout.map((s, idx) => {
+      <div className="card-sheme" style={{ width: "100%", minHeight: 500 }}>
+        {/* Линии */}
+        <svg
+          className="map-lines"
+          width={width}
+          height={height}
+          style={{ width: width, height: height }}
+        >
+          {/* Горизонтальные линии */}
+          {rows.map((y) => (
+            <line
+              key={y}
+              x1={0}
+              y1={y}
+              x2={width}
+              y2={y}
+              stroke="#111827"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ))}
+          {/* Вертикальные линии */}
+          {colsX.map((x) => (
+            <line
+              key={`v-${x}`}
+              x1={x}
+              y1={0}
+              x2={x}
+              y2={height}
+              stroke="#111827"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          ))}
+        </svg>
+
+        {/* Кружки */}
+        {layout.map((s) => {
           const st = sensorStatus(s.id);
 
           return (
-            <FieldStatusBadge
-              wetness={st.wet}
-              temperature={st.temp}
-              charge={st.chg}
-              id={s.id}
-              size={240}
-            />
+            <div
+              key={s.id}
+              className="map-node"
+              style={{ left: s.x, top: s.y }}
+            >
+              <FieldStatusBadge
+                wetness={st.wet}
+                temperature={st.temp}
+                charge={st.chg}
+                id={s.id}
+                size={badgeSize}
+              />
+            </div>
           );
         })}
       </div>

@@ -12,8 +12,8 @@ export const defaultSettings: SettingsState = {
   fields: [
     {
       id: "1",
-      name: "Поле № 1",
-      coords: { lat: 55.751244, lon: 37.618423 },
+      name: "Поле Краснодар",
+      coords: { lat: 44.944645, lon: 37.856681 },
       sensors: [
         "001",
         "002",
@@ -29,8 +29,8 @@ export const defaultSettings: SettingsState = {
     },
     {
       id: "2",
-      name: "Поле № 2",
-      coords: { lat: 59.9342802, lon: 30.3350986 },
+      name: "Поле Н. Новгород",
+      coords: { lat: 55.925708, lon: 44.027213 },
       sensors: [
         "011",
         "012",

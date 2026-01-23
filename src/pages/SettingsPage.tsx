@@ -30,12 +30,15 @@ export default function SettingsPage() {
         <div className="h2">Уставки</div>
 
         <div className="card">
-          <div className="muted" style={{ marginBottom: 8 }}>
+          <div
+            className="muted"
+            style={{ marginBottom: 8, fontWeight: "bold" }}
+          >
             Температура (°C)
           </div>
           <div className="row">
             <label style={{ flex: 1 }} className="muted">
-              warnMin
+              Мин. допустимое значение
               <input
                 className="input"
                 type="number"
@@ -52,7 +55,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              warnMax
+              Макс. допустимое значение
               <input
                 className="input"
                 type="number"
@@ -69,7 +72,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              dangerMax
+              Критическое значение
               <input
                 className="input"
                 type="number"
@@ -91,12 +94,15 @@ export default function SettingsPage() {
         <div style={{ height: 10 }} />
 
         <div className="card">
-          <div className="muted" style={{ marginBottom: 8 }}>
+          <div
+            className="muted"
+            style={{ marginBottom: 8, fontWeight: "bold" }}
+          >
             Влажность (%)
           </div>
           <div className="row">
             <label style={{ flex: 1 }} className="muted">
-              warnMin
+              Мин. допустимое значение
               <input
                 className="input"
                 type="number"
@@ -110,7 +116,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              warnMax
+              Макс. допустимое значение
               <input
                 className="input"
                 type="number"
@@ -124,7 +130,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              dangerMin
+              Критическое значение
               <input
                 className="input"
                 type="number"
@@ -146,12 +152,15 @@ export default function SettingsPage() {
         <div style={{ height: 10 }} />
 
         <div className="card">
-          <div className="muted" style={{ marginBottom: 8 }}>
+          <div
+            className="muted"
+            style={{ marginBottom: 8, fontWeight: "bold" }}
+          >
             Заряд батареи (%)
           </div>
           <div className="row">
             <label style={{ flex: 1 }} className="muted">
-              warnMin
+              Мин. допустимый уровень
               <input
                 className="input"
                 type="number"
@@ -165,7 +174,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              warnMax
+              Макс. допустимый уровень
               <input
                 className="input"
                 type="number"
@@ -179,7 +188,7 @@ export default function SettingsPage() {
               />
             </label>
             <label style={{ flex: 1 }} className="muted">
-              dangerMin
+              Критический уровень
               <input
                 className="input"
                 type="number"
@@ -225,8 +234,7 @@ export default function SettingsPage() {
       <div className="card">
         <div className="h2">Координаты полей</div>
         <div className="muted" style={{ marginBottom: 10 }}>
-          Эти координаты используются на странице API (погода) и могут
-          понадобиться для логики «не поливать если дождь».
+          Эти координаты используются на странице API (погода).
         </div>
 
         <div className="card" style={{ padding: 12 }}>
