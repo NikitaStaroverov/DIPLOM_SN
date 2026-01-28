@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import FieldTabs from "../components/FieldTabs";
 import { useAppStore } from "../store";
 import { fetchYandexWeather } from "../services/weather";

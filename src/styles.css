@@ -131,6 +131,12 @@ select {
 .input:focus {
   border-color: rgba(93, 209, 255, 0.6);
 }
+.charts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

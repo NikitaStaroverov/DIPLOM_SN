@@ -6,6 +6,7 @@ import {
   defaultSettings,
   type SettingsState,
 } from "./services/storage";
+import { injectDemo } from "./services/mockStream";
 
 type AuthState = {
   isAuthed: boolean;
@@ -34,6 +35,8 @@ function load(): SettingsState {
 
 export const useAppStore = create<AppState>((set, get) => {
   const settings = load();
+  const demo: Record<string, SensorReading[]> = {};
+  injectDemo(demo, settings.fields);
   return {
     isAuthed: false,
     username: settings.auth.username,
@@ -64,7 +67,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     fields: settings.fields,
     thresholds: settings.thresholds,
-    readingsByField: {},
+    readingsByField: demo,
 
     appendReading: (fieldId, r) => {
       set((state) => {
