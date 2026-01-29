@@ -133,9 +133,9 @@ export default function ChartsPage() {
     return { start, end };
   }, [selectedDay]);
 
-  const xDomain = useMemo(() => {
+  const xDomain = useMemo<[number, number] | undefined>(() => {
     if (!dayRange) return undefined;
-    return [dayRange.start, dayRange.end] as const;
+    return [dayRange.start, dayRange.end];
   }, [dayRange]);
 
   const xTicks = useMemo(() => {

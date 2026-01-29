@@ -1,18 +1,11 @@
+import { SensorReading } from "../types";
+
 export type Status = "good" | "warn" | "bad" | "nodata";
 
 export type Thresholds = {
   temperature: { warnMin: number; warnMax: number; dangerMax: number };
   wetness: { warnMin: number; warnMax: number; dangerMin: number };
   charge: { warnMin: number; warnMax: number; dangerMin: number };
-};
-
-export type SensorReading = {
-  fieldId: string;
-  sensorId: string;
-  timestamp: string; // ISO
-  temperature: number;
-  wetness: number;
-  charge: number;
 };
 
 const rank: Record<Status, number> = { nodata: 0, good: 1, warn: 2, bad: 3 };
