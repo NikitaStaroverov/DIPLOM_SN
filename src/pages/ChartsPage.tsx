@@ -1,7 +1,5 @@
-import React, { useMemo, useState } from "react";
-import FieldTabs from "../components/FieldTabs";
-import { useAppStore } from "../store";
-import type { SensorReading } from "../types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { parseSplLogText, type SplPoint } from "../services/splLog";
 import {
   LineChart,
   Line,
@@ -13,408 +11,174 @@ import {
 } from "recharts";
 
 const PARAMS = [
-  { name: "Влажность", value: "wetness" },
-  { name: "Температура", value: "temperature" },
-  { name: "Заряд", value: "charge" },
-];
+  { key: "m1", label: "Влажность почвы (m1, резистивный)" },
+  { key: "m2", label: "Влажность почвы (m2, емкостный)" },
+  { key: "charge", label: "Заряд (В)" },
+  { key: "aht_m", label: "Влажность воздуха (aht_m, %)" },
+  { key: "aht_temp", label: "Температура наружная (aht_temp, °C)" },
+  { key: "bmp_pressure", label: "Атмосферное давление (bmp_pressure, Па)" },
+  { key: "temp", label: "Температура внутри устройства (temp, °C)" },
+  { key: "bmp_temp", label: "Температура наружная (bmp_temp, °C)" },
+  { key: "rain", label: "Датчик дождя" },
+] as const;
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
+type ParamKey = (typeof PARAMS)[number]["key"];
 
-function toTimeLabel(ts: number) {
+function timeLabel(ts: number) {
   const d = new Date(ts);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return d.toLocaleTimeString();
 }
 
-function dayStartLocal(ts: number) {
+function dateTimeLabel(ts: number) {
   const d = new Date(ts);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function dayKeyLocal(ts: number) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function avg(arr: number[]) {
-  if (!arr.length) return null;
-  return Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 5) / 5;
-}
-
-function buildHourTicks(start: number, end: number) {
-  const ticks: number[] = [];
-  const H = 60 * 60 * 1000;
-  for (let t = start; t <= end; t += H) ticks.push(t);
-  return ticks;
-}
-
-function yAxisLabel(param: string) {
-  switch (param) {
-    case "wetness":
-      return "Влажность, %";
-    case "temperature":
-      return "Температура, °C";
-    case "charge":
-      return "Заряд, %";
-    default:
-      return "";
-  }
-}
-
-function yAxisPropsForParam(param: string) {
-  switch (param) {
-    case "wetness":
-      return {
-        domain: [30, 100],
-        ticks: Array.from({ length: 15 }, (_, i) => 30 + i * 5),
-      };
-    case "temperature":
-      return {
-        domain: [15, 40],
-        ticks: Array.from({ length: 6 }, (_, i) => 15 + i * 5),
-      };
-    case "charge":
-      return {
-        domain: [5, 100],
-        ticks: Array.from({ length: 20 }, (_, i) => 5 + i * 5),
-      };
-    default:
-      return {};
-  }
+  return d.toLocaleString();
 }
 
 export default function ChartsPage() {
-  const fields = useAppStore((s) => s.fields);
-  const readingsByField = useAppStore((s) => s.readingsByField);
+  const [points, setPoints] = useState<SplPoint[]>([]);
+  const [sensorId, setSensorId] = useState<string>("");
+  const [param, setParam] = useState<ParamKey>("m1");
 
-  const [fieldId, setFieldId] = useState(fields[0]?.id ?? "1");
-  const field = fields.find((f) => f.id === fieldId) ?? fields[0];
+  // старт "с нынешней даты и времени" = момент открытия страницы
+  const sessionStartTs = useRef<number>(Date.now());
+  const lastTsRef = useRef<number>(0);
 
-  const [sensorId, setSensorId] = useState(field?.sensors[0] ?? "001");
+  useEffect(() => {
+    let alive = true;
 
-  const [averageSelectedParam, setAverageSelectedParam] = useState("wetness");
-  const [selectedParam, setSelectedParam] = useState("wetness");
+    async function tick() {
+      try {
+        const r = await fetch("/api/sensors-log");
+        if (!r.ok) return;
 
-  // Keep sensorId valid when switching fields
-  React.useEffect(() => {
-    const f = fields.find((x) => x.id === fieldId);
-    if (!f) return;
-    if (!f.sensors.includes(sensorId)) setSensorId(f.sensors[0] ?? sensorId);
-  }, [fieldId, fields]); // eslint-disable-line
+        const text = await r.text();
+        const parsed = parseSplLogText(text);
 
-  // 1) Собираем список доступных дат по полю (для выбора)
-  const availableDays = useMemo(() => {
-    const rs = (readingsByField[fieldId] ?? [])
-      .slice()
-      .sort((a, b) => a.timestamp - b.timestamp);
-    const set = new Set<string>();
-    for (const r of rs) set.add(dayKeyLocal(r.timestamp));
-    return Array.from(set).sort();
-  }, [readingsByField, fieldId]);
+        // только с момента открытия страницы
+        const fresh = parsed.filter((p) => p.ts >= sessionStartTs.current);
 
-  // 2) Выбранный день: по умолчанию последний доступный
-  const [selectedDay, setSelectedDay] = useState<string>("");
+        // только новые (по времени)
+        const newOnes = fresh.filter((p) => p.ts > lastTsRef.current);
+        if (!newOnes.length) return;
 
-  React.useEffect(() => {
-    if (!availableDays.length) return;
-    // если текущий selectedDay невалиден — ставим последний
-    if (!selectedDay || !availableDays.includes(selectedDay)) {
-      setSelectedDay(availableDays[availableDays.length - 1]);
-    }
-  }, [availableDays]); // eslint-disable-line
+        lastTsRef.current = Math.max(...newOnes.map((p) => p.ts));
+        if (!alive) return;
 
-  // 3) Границы выбранных суток в ms
-  const dayRange = useMemo(() => {
-    if (!selectedDay) return null;
-    const [Y, M, D] = selectedDay.split("-").map(Number);
-    const start = new Date(Y, M - 1, D, 0, 0, 0, 0).getTime();
-    const end = start + 24 * 60 * 60 * 1000;
-    return { start, end };
-  }, [selectedDay]);
+        setPoints((prev) => {
+          const merged = [...prev, ...newOnes];
+          // ограничим память (чтобы не разрасталось бесконечно)
+          if (merged.length > 3000) return merged.slice(merged.length - 3000);
+          return merged;
+        });
 
-  const xDomain = useMemo<[number, number] | undefined>(() => {
-    if (!dayRange) return undefined;
-    return [dayRange.start, dayRange.end];
-  }, [dayRange]);
-
-  const xTicks = useMemo(() => {
-    if (!dayRange) return [];
-    return buildHourTicks(dayRange.start, dayRange.end);
-  }, [dayRange]);
-
-  // Sensors that actually have data for the selected day
-  const sensorsWithData = useMemo(() => {
-    if (!dayRange) return [];
-    const set = new Set<string>();
-    for (const r of readingsByField[fieldId] ?? []) {
-      if (r.timestamp >= dayRange.start && r.timestamp < dayRange.end) {
-        set.add(r.sensorId);
+        // если датчик ещё не выбран — выберем первый встретившийся
+        if (!sensorId) setSensorId(newOnes[0].id);
+      } catch {
+        // молча
       }
     }
-    return Array.from(set).sort();
-  }, [readingsByField, fieldId, dayRange]);
 
-  React.useEffect(() => {
-    if (!sensorsWithData.length) return;
-    if (!sensorsWithData.includes(sensorId)) {
-      setSensorId(sensorsWithData[0]);
-    }
-  }, [sensorsWithData]); // eslint-disable-line
+    tick();
+    const id = window.setInterval(tick, 5000); // обновление раз в 5 сек
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+    // важно: не добавляем sensorId в зависимости, чтобы не пересоздавать таймер
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // 4) Данные суток по полю (все датчики) — для "Средние по полю"
-  const dayReadingsForField = useMemo(() => {
-    if (!dayRange) return [];
-    const rs = (readingsByField[fieldId] ?? [])
-      .filter(
-        (r) => r.timestamp >= dayRange.start && r.timestamp < dayRange.end,
-      )
-      .slice()
-      .sort((a, b) => a.timestamp - b.timestamp);
-    return rs;
-  }, [readingsByField, fieldId, dayRange]);
+  const sensorIds = useMemo(() => {
+    return Array.from(new Set(points.map((p) => p.id))).sort();
+  }, [points]);
 
-  // 5) Средние по полю: группируем по часу (или по точному timestamp, но лучше по часу)
-  const avgSeries = useMemo(() => {
-    if (!dayRange) return [];
-
-    const byHour = new Map<number, SensorReading[]>();
-    for (const r of dayReadingsForField) {
-      const d = new Date(r.timestamp);
-      const hourStart = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        d.getHours(),
-        0,
-        0,
-        0,
-      ).getTime();
-      const list = byHour.get(hourStart) ?? [];
-      list.push(r);
-      byHour.set(hourStart, list);
-    }
-
-    return Array.from(byHour.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([ts, list]) => ({
-        ts,
-        t: toTimeLabel(ts),
-        wetness: avg(list.map((x) => x.wetness)),
-        temperature: avg(list.map((x) => x.temperature)),
-        charge: avg(list.map((x) => x.charge)),
-      }));
-  }, [dayReadingsForField, dayRange]);
-
-  // 6) Данные суток по выбранному датчику
-  const sensorSeries = useMemo(() => {
-    if (!dayRange) return [];
-
-    const rs = (readingsByField[fieldId] ?? [])
-      .filter((r) => r.sensorId === sensorId)
-      .filter(
-        (r) => r.timestamp >= dayRange.start && r.timestamp < dayRange.end,
-      )
-      .slice()
-      .sort((a, b) => a.timestamp - b.timestamp);
-
-    return rs.map((r) => ({
-      ts: r.timestamp,
-      t: toTimeLabel(r.timestamp),
-      wetness: r.wetness,
-      temperature: r.temperature,
-      charge: r.charge,
-    }));
-  }, [readingsByField, fieldId, sensorId, dayRange]);
-
-  const xAxisProps = {
-    dataKey: "ts",
-    type: "number" as const,
-    domain: xDomain ?? (["dataMin", "dataMax"] as const),
-    tickFormatter: (v: any) => toTimeLabel(Number(v)),
-    tick: { fontSize: 11 },
-    ticks: xTicks.length ? xTicks : undefined,
-    minTickGap: 0,
-    interval: 0 as const,
-  };
-
-  const chartWidth = Math.max(900, xTicks.length * 60);
+  const series = useMemo(() => {
+    const key = param;
+    return points
+      .filter((p) => p.id === sensorId)
+      .map((p) => {
+        const v = (p as any)[key] as number | undefined;
+        return v == null ? null : { ts: p.ts, value: v };
+      })
+      .filter(Boolean) as { ts: number; value: number }[];
+  }, [points, sensorId, param]);
 
   return (
     <div className="card">
-      <div className="h1">Графики</div>
+      <div className="h1">Графики (real-time)</div>
       <div className="muted" style={{ marginBottom: 12 }}>
-        Сутки: отображение данных за выбранную дату (00:00–24:00).
+        Данные берутся из log.txt. График строится с момента открытия страницы.
       </div>
 
-      <FieldTabs fields={fields} activeId={fieldId} onChange={setFieldId} />
-
-      <div style={{ height: 12 }} />
-
-      {/* Выбор даты */}
       <div
         className="row"
-        style={{ gap: 12, alignItems: "center", marginBottom: 12 }}
+        style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}
       >
-        <div className="muted" style={{ minWidth: 90 }}>
-          Дата:
-        </div>
-        <select
-          className="input"
-          style={{ maxWidth: 180 }}
-          value={selectedDay}
-          onChange={(e) => setSelectedDay(e.target.value)}
-          disabled={!availableDays.length}
-        >
-          {availableDays.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        <label className="row" style={{ gap: 8, alignItems: "center" }}>
+          <span className="muted">Датчик (ID):</span>
+          <select
+            className="input"
+            style={{ maxWidth: 200 }}
+            value={sensorId}
+            onChange={(e) => setSensorId(e.target.value)}
+          >
+            {sensorIds.length === 0 ? (
+              <option value="">нет данных</option>
+            ) : null}
+            {sensorIds.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="row" style={{ gap: 8, alignItems: "center" }}>
+          <span className="muted">Параметр:</span>
+          <select
+            className="input"
+            style={{ maxWidth: 360 }}
+            value={param}
+            onChange={(e) => setParam(e.target.value as ParamKey)}
+          >
+            {PARAMS.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="muted">Точек: {series.length}</div>
       </div>
 
-      <div className="charts">
-        {/* Средние по полю */}
-        <div className="card">
-          <div
-            className="row"
-            style={{
-              alignItems: "baseline",
-              gap: 12,
-            }}
+      <div style={{ width: "100%", height: 360, marginTop: 12 }}>
+        <ResponsiveContainer>
+          <LineChart
+            data={series}
+            margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
           >
-            <div className="h2">Средние по полю</div>
-            <select
-              className="input"
-              style={{ maxWidth: 180 }}
-              value={averageSelectedParam}
-              onChange={(e) => setAverageSelectedParam(e.target.value)}
-            >
-              {PARAMS.map((param) => (
-                <option key={param.value} value={param.value}>
-                  {param.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ width: "100%", height: 320 }}>
-            <div style={{ width: "100%", height: 320 }}>
-              <ResponsiveContainer>
-                <LineChart
-                  data={avgSeries}
-                  margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    {...xAxisProps}
-                    label={{
-                      value: "Время",
-                      position: "insideBottom",
-                      offset: -5,
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    {...yAxisPropsForParam(averageSelectedParam)}
-                    interval={0}
-                    label={{
-                      value: yAxisLabel(averageSelectedParam),
-                      angle: -90,
-                      position: "insideLeft",
-                    }}
-                  />
-                  <Tooltip labelFormatter={(v) => toTimeLabel(Number(v))} />
-                  <Line
-                    type="monotone"
-                    dataKey={averageSelectedParam}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        {/* Конкретный датчик */}
-        <div className="card">
-          <div
-            className="row"
-            style={{
-              alignItems: "baseline",
-              gap: 12,
-            }}
-          >
-            <div className="h2">Конкретный датчик</div>
-
-            <select
-              className="input"
-              style={{ maxWidth: 180 }}
-              value={selectedParam}
-              onChange={(e) => setSelectedParam(e.target.value)}
-            >
-              {PARAMS.map((param) => (
-                <option key={param.value} value={param.value}>
-                  {param.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="input"
-              style={{ maxWidth: 180 }}
-              value={sensorId}
-              onChange={(e) => setSensorId(e.target.value)}
-            >
-              {(field?.sensors ?? []).map((id) => (
-                <option key={id} value={id}>
-                  {`Датчик ${id}`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ width: "100%", height: 320 }}>
-            <div style={{ width: "100%", height: 320 }}>
-              <ResponsiveContainer>
-                <LineChart
-                  data={sensorSeries}
-                  margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    {...xAxisProps}
-                    label={{
-                      value: "Время",
-                      position: "insideBottom",
-                      offset: -5,
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    {...yAxisPropsForParam(selectedParam)}
-                    interval={0}
-                    label={{
-                      value: yAxisLabel(selectedParam),
-                      angle: -90,
-                      position: "insideLeft",
-                    }}
-                  />
-                  <Tooltip labelFormatter={(v) => toTimeLabel(Number(v))} />
-                  <Line type="monotone" dataKey={selectedParam} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {sensorSeries.length === 0 && (
-            <div className="muted" style={{ marginTop: 8 }}>
-              Нет данных за выбранную дату для датчика {sensorId}.
-            </div>
-          )}
-        </div>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              domain={["auto", "auto"]}
+              tickFormatter={(v) => timeLabel(Number(v))}
+              tick={{ fontSize: 11 }}
+            />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip labelFormatter={(v) => dateTimeLabel(Number(v))} />
+            <Line type="monotone" dataKey="value" dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
+
+      {sensorId && series.length === 0 ? (
+        <div className="muted" style={{ marginTop: 8 }}>
+          По датчику {sensorId} пока нет значений для параметра "{param}" (с
+          момента открытия страницы).
+        </div>
+      ) : null}
     </div>
   );
 }

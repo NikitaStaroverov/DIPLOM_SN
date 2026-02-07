@@ -21,4 +21,21 @@ app.get("/api/weather", async (req, res) => {
   }
 });
 
+app.get("/api/sensors-log", async (req, res) => {
+  try {
+    const url = "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+    const r = await fetch(url);
+
+    if (!r.ok) {
+      return res.status(r.status).send(`Ошибка загрузки log.txt: ${r.status}`);
+    }
+
+    const text = await r.text();
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(text);
+  } catch (e) {
+    res.status(500).send("Ошибка при запросе log.txt");
+  }
+});
+
 app.listen(PORT, () => console.log(`Weather proxy on :${PORT}`));

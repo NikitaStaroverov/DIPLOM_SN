@@ -1,7 +1,11 @@
 import React, { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAppStore } from "../store";
-import { startMockStream, subscribe } from "../services/mockStream";
+import {
+  startMockStream,
+  subscribe,
+  stopMockStream,
+} from "../services/mockStream";
 import Layout from "./Layout";
 import LoginPage from "../pages/LoginPage";
 import MonitoringPage from "../pages/MonitoringPage";
@@ -24,10 +28,15 @@ export default function App() {
   const appendReading = useAppStore((s) => s.appendReading);
 
   useEffect(() => {
-    // Запускаем демо-поток данных
     startMockStream(fields);
+
+    const unsubscribe = subscribe((reading, fieldId) =>
+      appendReading(fieldId, reading),
+    );
+
     return () => {
-      subscribe((reading, fieldId) => appendReading(fieldId, reading));
+      unsubscribe();
+      stopMockStream();
     };
   }, [fields, appendReading]);
 
