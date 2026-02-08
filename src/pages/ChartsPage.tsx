@@ -10,6 +10,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+function withCacheBust(url: string) {
+  return url.includes("?")
+    ? `${url}&t=${Date.now()}`
+    : `${url}?t=${Date.now()}`;
+}
+
 const RAW_LOG_URL =
   "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
 
@@ -55,7 +61,7 @@ export default function ChartsPage() {
 
     async function tick() {
       try {
-        const r = await fetch(`${LOG_URL}?t=${Date.now()}`);
+        const r = await fetch(withCacheBust(LOG_URL));
         if (!r.ok) return;
 
         const text = await r.text();
