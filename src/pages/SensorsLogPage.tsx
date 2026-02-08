@@ -15,7 +15,7 @@ export default function SensorsLogPage() {
 
   const LOG_URL = import.meta.env.DEV
     ? "/api/sensors-log"
-    : `https://api.allorigins.win/raw?url=${encodeURIComponent(RAW_LOG_URL)}`;
+    : "https://spl-log-proxy.starovierov98.workers.dev";
 
   async function loadLog() {
     try {

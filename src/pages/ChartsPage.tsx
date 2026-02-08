@@ -21,7 +21,7 @@ const RAW_LOG_URL =
 
 const LOG_URL = import.meta.env.DEV
   ? "/api/sensors-log"
-  : `https://api.allorigins.win/raw?url=${encodeURIComponent(RAW_LOG_URL)}`;
+  : "https://spl-log-proxy.starovierov98.workers.dev";
 
 const PARAMS = [
   { key: "m1", label: "Влажность почвы (m1, резистивный)" },
