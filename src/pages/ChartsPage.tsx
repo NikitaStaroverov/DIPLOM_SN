@@ -10,6 +10,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+const LOG_URL = import.meta.env.DEV
+  ? "/api/sensors-log"
+  : "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+
 const PARAMS = [
   { key: "m1", label: "Влажность почвы (m1, резистивный)" },
   { key: "m2", label: "Влажность почвы (m2, емкостный)" },
@@ -48,7 +52,7 @@ export default function ChartsPage() {
 
     async function tick() {
       try {
-        const r = await fetch("/api/sensors-log");
+        const r = await fetch(LOG_URL);
         if (!r.ok) return;
 
         const text = await r.text();
