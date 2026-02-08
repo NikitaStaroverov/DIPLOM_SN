@@ -4,9 +4,12 @@ export default function SensorsLogPage() {
   const [text, setText] = useState<string>("");
   const [error, setError] = useState<string>("");
 
+  const RAW_LOG_URL =
+    "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+
   const LOG_URL = import.meta.env.DEV
     ? "/api/sensors-log"
-    : "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+    : `https://api.allorigins.win/raw?url=${encodeURIComponent(RAW_LOG_URL)}`;
 
   async function loadLog() {
     try {

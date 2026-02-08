@@ -10,9 +10,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+const RAW_LOG_URL =
+  "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+
 const LOG_URL = import.meta.env.DEV
   ? "/api/sensors-log"
-  : "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+  : `https://api.allorigins.win/raw?url=${encodeURIComponent(RAW_LOG_URL)}`;
 
 const PARAMS = [
   { key: "m1", label: "Влажность почвы (m1, резистивный)" },
