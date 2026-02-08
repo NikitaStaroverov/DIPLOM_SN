@@ -52,7 +52,7 @@ export default function ChartsPage() {
 
     async function tick() {
       try {
-        const r = await fetch(LOG_URL);
+        const r = await fetch(`${LOG_URL}?t=${Date.now()}`);
         if (!r.ok) return;
 
         const text = await r.text();

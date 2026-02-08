@@ -4,10 +4,14 @@ export default function SensorsLogPage() {
   const [text, setText] = useState<string>("");
   const [error, setError] = useState<string>("");
 
+  const LOG_URL = import.meta.env.DEV
+    ? "/api/sensors-log"
+    : "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
+
   async function loadLog() {
     try {
       setError("");
-      const r = await fetch("/api/sensors-log");
+      const r = await fetch(`${LOG_URL}?t=${Date.now()}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const t = await r.text();
       setText(t);
