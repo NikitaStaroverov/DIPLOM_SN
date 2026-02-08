@@ -16,9 +16,6 @@ function withCacheBust(url: string) {
     : `${url}?t=${Date.now()}`;
 }
 
-const RAW_LOG_URL =
-  "https://spl.decadalab.ru/responder_spl_dat_test/data/log.txt";
-
 const LOG_URL = import.meta.env.DEV
   ? "/api/sensors-log"
   : "https://spl-log-proxy.starovierov98.workers.dev";
