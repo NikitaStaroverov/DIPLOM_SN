@@ -45,61 +45,132 @@ function adaptiveAllPointLimit(totalPoints: number) {
   return Math.max(ALL_MIN_POINTS, Math.min(ALL_MAX_POINTS, adaptive));
 }
 
-function downsampleMinMaxSeries(
-  data: ChartPoint[],
-  maxPoints: number,
-): ChartPoint[] {
+function normalizeSeriesByTimestamp(data: ChartPoint[]): ChartPoint[] {
+  if (data.length <= 1) return data;
+
+  const sorted = [...data].sort((a, b) => a.ts - b.ts);
+  const normalized: ChartPoint[] = [];
+
+  let ts = sorted[0].ts;
+  let sum = sorted[0].value;
+  let count = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const p = sorted[i];
+    if (p.ts === ts) {
+      sum += p.value;
+      count += 1;
+      continue;
+    }
+
+    normalized.push({ ts, value: sum / count });
+    ts = p.ts;
+    sum = p.value;
+    count = 1;
+  }
+
+  normalized.push({ ts, value: sum / count });
+  return normalized;
+}
+
+function downsampleAveragedSeries(data: ChartPoint[], maxPoints: number): ChartPoint[] {
   if (data.length <= maxPoints || maxPoints < 3) return data;
 
-  const bucketCount = Math.max(1, Math.floor(maxPoints / 2));
-  const bucketSize = Math.ceil(data.length / bucketCount);
+  const bucketSize = Math.ceil(data.length / maxPoints);
   const reduced: ChartPoint[] = [];
 
   for (let i = 0; i < data.length; i += bucketSize) {
     const end = Math.min(i + bucketSize, data.length);
-    let min = data[i];
-    let max = data[i];
+    let sumTs = 0;
+    let sumValue = 0;
+    let count = 0;
 
-    for (let j = i + 1; j < end; j++) {
-      const p = data[j];
-      if (p.value < min.value) min = p;
-      if (p.value > max.value) max = p;
+    for (let j = i; j < end; j++) {
+      sumTs += data[j].ts;
+      sumValue += data[j].value;
+      count += 1;
     }
 
-    if (min.ts <= max.ts) {
-      reduced.push(min);
-      if (max !== min) reduced.push(max);
-    } else {
-      reduced.push(max);
-      if (max !== min) reduced.push(min);
-    }
+    reduced.push({
+      ts: Math.round(sumTs / count),
+      value: sumValue / count,
+    });
   }
 
-  if (reduced[0] !== data[0]) reduced.unshift(data[0]);
-  if (reduced[reduced.length - 1] !== data[data.length - 1]) {
-    reduced.push(data[data.length - 1]);
+  if (reduced.length >= 2) {
+    reduced[0] = data[0];
+    reduced[reduced.length - 1] = data[data.length - 1];
   }
 
-  if (reduced.length <= maxPoints) return reduced;
+  return reduced;
+}
 
-  const step = Math.ceil(reduced.length / maxPoints);
-  const strided = reduced.filter((_, idx) => idx % step === 0);
+function smoothSeries(data: ChartPoint[], windowSize: number): ChartPoint[] {
+  if (windowSize <= 1 || data.length <= 2) return data;
 
-  if (strided[strided.length - 1] !== reduced[reduced.length - 1]) {
-    strided.push(reduced[reduced.length - 1]);
+  const size = windowSize % 2 === 0 ? windowSize + 1 : windowSize;
+  const radius = Math.floor(size / 2);
+  const prefix = new Array<number>(data.length + 1).fill(0);
+
+  for (let i = 0; i < data.length; i++) {
+    prefix[i + 1] = prefix[i] + data[i].value;
   }
 
-  return strided;
+  return data.map((p, i) => {
+    const from = Math.max(0, i - radius);
+    const to = Math.min(data.length - 1, i + radius);
+    const sum = prefix[to + 1] - prefix[from];
+    const avg = sum / (to - from + 1);
+    return { ts: p.ts, value: avg };
+  });
+}
+
+function clampDomainToBounds(
+  domain: [number, number],
+  bounds: [number, number],
+): [number, number] {
+  const [minTs, maxTs] = bounds;
+  const [from, to] = domain;
+  const width = to - from;
+  const range = maxTs - minTs;
+
+  if (!Number.isFinite(width) || width <= 0) return [minTs, maxTs];
+  if (!Number.isFinite(range) || range <= 0 || width >= range) {
+    return [minTs, maxTs];
+  }
+
+  let nextFrom = from;
+  let nextTo = to;
+
+  if (nextFrom < minTs) {
+    nextFrom = minTs;
+    nextTo = minTs + width;
+  }
+
+  if (nextTo > maxTs) {
+    nextTo = maxTs;
+    nextFrom = maxTs - width;
+  }
+
+  return [nextFrom, nextTo];
 }
 
 function timeLabel(ts: number) {
   const d = new Date(ts);
-  return d.toLocaleTimeString();
+  return d.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function dateTimeLabel(ts: number) {
   const d = new Date(ts);
   return d.toLocaleString();
+}
+
+function intTick(v: number) {
+  return String(Math.trunc(v));
 }
 
 function windowMs(key: "6h" | "24h" | "7d" | "all") {
@@ -126,21 +197,116 @@ export default function ChartsPage() {
   const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
   const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
   const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const chartWrapRef = useRef<HTMLDivElement | null>(null);
+  const panRafRef = useRef<number | null>(null);
+  const panQueuedDomainRef = useRef<[number, number] | null>(null);
+  const panStartRef = useRef<{
+    label: number;
+    chartX: number | null;
+    domain: [number, number];
+  } | null>(null);
 
-  function handleMouseDown(e: any) {
-    if (e && typeof e.activeLabel === "number") {
-      setRefAreaLeft(e.activeLabel);
-      setRefAreaRight(e.activeLabel);
+  function handleMouseDown(state: any, evt?: any) {
+    if (!state || typeof state.activeLabel !== "number") return;
+
+    const activeLabel = state.activeLabel as number;
+    const shiftPressed = Boolean(evt?.shiftKey ?? evt?.nativeEvent?.shiftKey);
+
+    if (zoomDomain && !shiftPressed) {
+      panStartRef.current = {
+        label: activeLabel,
+        chartX: typeof state.chartX === "number" ? state.chartX : null,
+        domain: zoomDomain,
+      };
+      setIsPanning(true);
+      setRefAreaLeft(null);
+      setRefAreaRight(null);
+      return;
+    }
+
+    panStartRef.current = null;
+    setIsPanning(false);
+    setRefAreaLeft(activeLabel);
+    setRefAreaRight(activeLabel);
+  }
+
+  function queuePanDomain(domain: [number, number]) {
+    panQueuedDomainRef.current = domain;
+
+    if (panRafRef.current !== null) return;
+
+    panRafRef.current = window.requestAnimationFrame(() => {
+      panRafRef.current = null;
+      const queued = panQueuedDomainRef.current;
+      panQueuedDomainRef.current = null;
+      if (!queued) return;
+
+      setZoomDomain((prev) => {
+        if (prev && prev[0] === queued[0] && prev[1] === queued[1]) {
+          return prev;
+        }
+        return queued;
+      });
+    });
+  }
+
+  function flushQueuedPanDomain() {
+    if (panRafRef.current !== null) {
+      window.cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = null;
+    }
+
+    const queued = panQueuedDomainRef.current;
+    panQueuedDomainRef.current = null;
+    if (queued) {
+      setZoomDomain(queued);
     }
   }
 
-  function handleMouseMove(e: any) {
-    if (refAreaLeft !== null && e && typeof e.activeLabel === "number") {
-      setRefAreaRight(e.activeLabel);
+  function handleMouseMove(state: any) {
+    if (!state || typeof state.activeLabel !== "number") return;
+
+    if (isPanning) {
+      if (!panStartRef.current || !seriesBounds) return;
+      const domainWidth =
+        panStartRef.current.domain[1] - panStartRef.current.domain[0];
+
+      let shiftMs: number;
+      if (
+        panStartRef.current.chartX !== null &&
+        typeof state.chartX === "number" &&
+        chartWrapRef.current &&
+        chartWrapRef.current.clientWidth > 0
+      ) {
+        const dx = state.chartX - panStartRef.current.chartX;
+        shiftMs = -(dx / chartWrapRef.current.clientWidth) * domainWidth;
+      } else {
+        const delta = state.activeLabel - panStartRef.current.label;
+        shiftMs = delta;
+      }
+
+      const nextDomain: [number, number] = [
+        panStartRef.current.domain[0] + shiftMs,
+        panStartRef.current.domain[1] + shiftMs,
+      ];
+      queuePanDomain(clampDomainToBounds(nextDomain, seriesBounds));
+      return;
+    }
+
+    if (refAreaLeft !== null) {
+      setRefAreaRight(state.activeLabel);
     }
   }
 
   function handleMouseUp() {
+    if (isPanning) {
+      flushQueuedPanDomain();
+      setIsPanning(false);
+      panStartRef.current = null;
+      return;
+    }
+
     if (refAreaLeft === null || refAreaRight === null) {
       setRefAreaLeft(null);
       setRefAreaRight(null);
@@ -167,6 +333,19 @@ export default function ChartsPage() {
 
   function resetZoom() {
     setZoomDomain(null);
+  }
+
+  function shiftZoomWindow(direction: -1 | 1) {
+    if (!zoomDomain || !seriesBounds) return;
+
+    const width = zoomDomain[1] - zoomDomain[0];
+    const shiftMs = Math.max(width * 0.25, 1000) * direction;
+    const shifted: [number, number] = [
+      zoomDomain[0] + shiftMs,
+      zoomDomain[1] + shiftMs,
+    ];
+
+    setZoomDomain(clampDomainToBounds(shifted, seriesBounds));
   }
 
   const [windowKey, setWindowKey] = useState<"6h" | "24h" | "7d" | "all">(
@@ -255,22 +434,106 @@ export default function ChartsPage() {
 
   const rawSeries = useMemo(() => {
     const key = param;
-    return points
+    const mapped = points
       .filter((p) => p.id === sensorId)
       .map((p) => {
         const v = (p as any)[key] as number | undefined;
         return v == null ? null : { ts: p.ts, value: v };
       })
       .filter(Boolean) as ChartPoint[];
+    return normalizeSeriesByTimestamp(mapped);
   }, [points, sensorId, param]);
 
   const series = useMemo(() => {
     if (windowKey !== "all") return rawSeries;
-    return downsampleMinMaxSeries(
+    return downsampleAveragedSeries(
       rawSeries,
       adaptiveAllPointLimit(rawSeries.length),
     );
   }, [rawSeries, windowKey]);
+
+  const displaySeries = useMemo(() => {
+    const window =
+      series.length > 3000
+        ? 11
+        : series.length > 1200
+          ? 7
+          : series.length > 300
+            ? 5
+            : 3;
+    return smoothSeries(series, window);
+  }, [series]);
+
+  const visibleSeries = useMemo(() => {
+    if (!zoomDomain) return displaySeries;
+    const filtered = displaySeries.filter(
+      (p) => p.ts >= zoomDomain[0] && p.ts <= zoomDomain[1],
+    );
+    return filtered.length ? filtered : displaySeries;
+  }, [displaySeries, zoomDomain]);
+
+  const yDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
+    if (!visibleSeries.length) return ["auto", "auto"];
+
+    let min = visibleSeries[0].value;
+    let max = visibleSeries[0].value;
+
+    for (let i = 1; i < visibleSeries.length; i++) {
+      const v = visibleSeries[i].value;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+
+    const spread = max - min;
+    const mid = (min + max) / 2;
+    const half = spread > 0 ? spread * 0.75 : Math.max(Math.abs(mid) * 0.05, 1);
+    const from = Math.floor(mid - half);
+    const to = Math.ceil(mid + half);
+
+    if (to - from < 2) {
+      const c = Math.round(mid);
+      return [c - 1, c + 1];
+    }
+
+    return [from, to];
+  }, [visibleSeries]);
+
+  const seriesBounds = useMemo<[number, number] | null>(() => {
+    if (!series.length) return null;
+
+    let minTs = series[0].ts;
+    let maxTs = series[0].ts;
+
+    for (let i = 1; i < series.length; i++) {
+      const ts = series[i].ts;
+      if (ts < minTs) minTs = ts;
+      if (ts > maxTs) maxTs = ts;
+    }
+
+    return [minTs, maxTs];
+  }, [series]);
+
+  useEffect(() => {
+    if (!zoomDomain) return;
+
+    if (!seriesBounds) {
+      setZoomDomain(null);
+      return;
+    }
+
+    const clamped = clampDomainToBounds(zoomDomain, seriesBounds);
+    if (clamped[0] !== zoomDomain[0] || clamped[1] !== zoomDomain[1]) {
+      setZoomDomain(clamped);
+    }
+  }, [zoomDomain, seriesBounds]);
+
+  useEffect(() => {
+    return () => {
+      if (panRafRef.current !== null) {
+        window.cancelAnimationFrame(panRafRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="card">
@@ -346,20 +609,35 @@ export default function ChartsPage() {
           <option value="all">Всё</option>
         </select>
       </label>
+      <div className="muted" style={{ marginTop: 8 }}>
+        Зум: выделите участок мышью. Перемещение: перетаскивайте график.
+        Shift + перетаскивание при активном зуме: новый зум.
+      </div>
 
       {zoomDomain && (
-        <button
-          onClick={resetZoom}
-          style={{
-            marginTop: 12,
-            padding: "6px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Сбросить зум
-        </button>
+        <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => shiftZoomWindow(-1)}
+            style={{ padding: "6px 12px", cursor: "pointer" }}
+          >
+            ← Влево
+          </button>
+          <button
+            onClick={() => shiftZoomWindow(1)}
+            style={{ padding: "6px 12px", cursor: "pointer" }}
+          >
+            Вправо →
+          </button>
+          <button
+            onClick={resetZoom}
+            style={{ padding: "6px 12px", cursor: "pointer" }}
+          >
+            Сбросить зум
+          </button>
+        </div>
       )}
       <div
+        ref={chartWrapRef}
         style={{
           width: "100%",
           height: 360,
@@ -369,22 +647,29 @@ export default function ChartsPage() {
       >
         <ResponsiveContainer>
           <LineChart
-            data={series}
+            data={displaySeries}
             margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
           >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="ts"
               type="number"
               allowDataOverflow
-              domain={zoomDomain ?? ["auto", "auto"]}
+              domain={zoomDomain ?? ["dataMin", "dataMax"]}
+              padding={{ left: 0, right: 0 }}
               tickFormatter={(v) => timeLabel(Number(v))}
               tick={{ fontSize: 11 }}
             />
-            <YAxis tick={{ fontSize: 11 }} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              domain={yDomain}
+              allowDecimals={false}
+              tickFormatter={(v) => intTick(Number(v))}
+            />
             <Tooltip labelFormatter={(v) => dateTimeLabel(Number(v))} />
             {refAreaLeft !== null && refAreaRight !== null ? (
               <ReferenceArea
@@ -393,7 +678,13 @@ export default function ChartsPage() {
                 fillOpacity={0.15}
               />
             ) : null}
-            <Line type="monotone" dataKey="value" dot={false} />
+            <Line
+              type="monotone"
+              dataKey="value"
+              dot={false}
+              strokeWidth={1.2}
+              isAnimationActive={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
