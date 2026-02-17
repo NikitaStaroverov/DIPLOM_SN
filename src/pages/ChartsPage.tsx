@@ -8,6 +8,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  ReferenceArea,
 } from "recharts";
 
 function withCacheBust(url: string) {
@@ -44,17 +45,86 @@ function dateTimeLabel(ts: number) {
   return d.toLocaleString();
 }
 
+function windowMs(key: "6h" | "24h" | "7d" | "all") {
+  switch (key) {
+    case "6h":
+      return 6 * 60 * 60 * 1000;
+    case "24h":
+      return 24 * 60 * 60 * 1000;
+    case "7d":
+      return 7 * 24 * 60 * 60 * 1000;
+    case "all":
+      return Infinity;
+  }
+}
+
 export default function ChartsPage() {
   const [points, setPoints] = useState<SplPoint[]>([]);
   const [sensorId, setSensorId] = useState<string>("");
   const [param, setParam] = useState<ParamKey>("m1");
+  const [status, setStatus] = useState<string>("Загрузка лога…");
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+
+  // состояния зума
+  const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
+  const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
+  const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
+
+  function handleMouseDown(e: any) {
+    if (e && typeof e.activeLabel === "number") {
+      setRefAreaLeft(e.activeLabel);
+      setRefAreaRight(e.activeLabel);
+    }
+  }
+
+  function handleMouseMove(e: any) {
+    if (refAreaLeft !== null && e && typeof e.activeLabel === "number") {
+      setRefAreaRight(e.activeLabel);
+    }
+  }
+
+  function handleMouseUp() {
+    if (refAreaLeft === null || refAreaRight === null) {
+      setRefAreaLeft(null);
+      setRefAreaRight(null);
+      return;
+    }
+
+    if (refAreaLeft === refAreaRight) {
+      // клик без выделения
+      setRefAreaLeft(null);
+      setRefAreaRight(null);
+      return;
+    }
+
+    const [from, to] =
+      refAreaLeft < refAreaRight
+        ? [refAreaLeft, refAreaRight]
+        : [refAreaRight, refAreaLeft];
+
+    setZoomDomain([from, to]);
+
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+  }
+
+  function resetZoom() {
+    setZoomDomain(null);
+  }
+
+  const [windowKey, setWindowKey] = useState<"6h" | "24h" | "7d" | "all">(
+    "24h",
+  );
 
   // старт "с нынешней даты и времени" = момент открытия страницы
-  const sessionStartTs = useRef<number>(Date.now());
   const lastTsRef = useRef<number>(0);
 
   useEffect(() => {
     let alive = true;
+
+    lastTsRef.current = 0;
+    setPoints([]);
+    setStatus("Загрузка лога…");
 
     async function tick() {
       try {
@@ -64,39 +134,63 @@ export default function ChartsPage() {
         const text = await r.text();
         const parsed = parseSplLogText(text);
 
-        // только с момента открытия страницы
-        const fresh = parsed.filter((p) => p.ts >= sessionStartTs.current);
+        const startTs =
+          windowKey === "all" ? -Infinity : Date.now() - windowMs(windowKey);
 
-        // только новые (по времени)
+        const fresh = parsed.filter((p) => p.ts >= startTs);
+        setLastFetchAt(Date.now());
+
+        // Первая загрузка
+        if (lastTsRef.current === 0) {
+          setPoints(fresh.slice(-3000));
+          lastTsRef.current = fresh.length
+            ? Math.max(...fresh.map((p) => p.ts))
+            : 0;
+
+          setStatus(
+            fresh.length
+              ? "История загружена. Онлайн обновление…"
+              : "Лог пустой. Ждём данные…",
+          );
+
+          if (!sensorId && fresh.length) {
+            setSensorId(fresh[fresh.length - 1].id);
+          }
+
+          return;
+        }
+
+        // Онлайн обновление
         const newOnes = fresh.filter((p) => p.ts > lastTsRef.current);
-        if (!newOnes.length) return;
+
+        if (!newOnes.length) {
+          setStatus("Онлайн: новых данных пока нет…");
+          return;
+        }
 
         lastTsRef.current = Math.max(...newOnes.map((p) => p.ts));
+
         if (!alive) return;
 
         setPoints((prev) => {
           const merged = [...prev, ...newOnes];
-          // ограничим память (чтобы не разрасталось бесконечно)
-          if (merged.length > 3000) return merged.slice(merged.length - 3000);
-          return merged;
+          return merged.slice(-3000);
         });
 
-        // если датчик ещё не выбран — выберем первый встретившийся
-        if (!sensorId) setSensorId(newOnes[0].id);
+        setStatus(`Онлайн: +${newOnes.length} новых точек`);
       } catch {
-        // молча
+        setStatus("Ошибка загрузки");
       }
     }
 
     tick();
-    const id = window.setInterval(tick, 5000); // обновление раз в 5 сек
+    const id = window.setInterval(tick, 5000);
+
     return () => {
       alive = false;
       window.clearInterval(id);
     };
-    // важно: не добавляем sensorId в зависимости, чтобы не пересоздавать таймер
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [windowKey]);
 
   const sensorIds = useMemo(() => {
     return Array.from(new Set(points.map((p) => p.id))).sort();
@@ -117,14 +211,17 @@ export default function ChartsPage() {
     <div className="card">
       <div className="h1">Графики (real-time)</div>
       <div className="muted" style={{ marginBottom: 12 }}>
-        Данные берутся из log.txt. График строится с момента открытия страницы.
+        Данные берутся из log.txt. График строится за выбранный период.
       </div>
 
       <div
         className="row"
         style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}
       >
-        <label className="row" style={{ gap: 8, alignItems: "center" }}>
+        <label
+          className="row"
+          style={{ gap: 8, alignItems: "center", flexWrap: "nowrap" }}
+        >
           <span className="muted">Датчик (ID):</span>
           <select
             className="input"
@@ -162,29 +259,77 @@ export default function ChartsPage() {
         <div className="muted">Точек: {series.length}</div>
       </div>
 
-      <div style={{ width: "100%", height: 360, marginTop: 12 }}>
+      <label
+        className="row"
+        style={{ gap: 8, alignItems: "center", marginTop: "10px" }}
+      >
+        <span className="muted">Период:</span>
+        <select
+          className="input"
+          style={{ maxWidth: 200 }}
+          value={windowKey}
+          onChange={(e) => setWindowKey(e.target.value as any)}
+        >
+          <option value="6h">6 часов</option>
+          <option value="24h">24 часа</option>
+          <option value="7d">7 дней</option>
+          <option value="all">Всё</option>
+        </select>
+      </label>
+
+      {zoomDomain && (
+        <button
+          onClick={resetZoom}
+          style={{
+            marginTop: 12,
+            padding: "6px 12px",
+            cursor: "pointer",
+          }}
+        >
+          Сбросить зум
+        </button>
+      )}
+      <div
+        style={{
+          width: "100%",
+          height: 360,
+          marginTop: 12,
+          userSelect: "none",
+        }}
+      >
         <ResponsiveContainer>
           <LineChart
             data={series}
             margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
           >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="ts"
               type="number"
-              domain={["auto", "auto"]}
+              allowDataOverflow
+              domain={zoomDomain ?? ["auto", "auto"]}
               tickFormatter={(v) => timeLabel(Number(v))}
               tick={{ fontSize: 11 }}
             />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip labelFormatter={(v) => dateTimeLabel(Number(v))} />
+            {refAreaLeft !== null && refAreaRight !== null ? (
+              <ReferenceArea
+                x1={refAreaLeft}
+                x2={refAreaRight}
+                fillOpacity={0.15}
+              />
+            ) : null}
             <Line type="monotone" dataKey="value" dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
       {sensorId && series.length === 0 ? (
-        <div className="muted" style={{ marginTop: 8 }}>
+        <div className="muted" style={{ marginTop: 8, textAlign: "center" }}>
           По датчику {sensorId} пока нет значений для параметра "{param}" (с
           момента открытия страницы).
         </div>

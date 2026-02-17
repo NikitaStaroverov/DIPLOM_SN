@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 export default function SensorsLogPage() {
   const [text, setText] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
   function withCacheBust(url: string) {
     return url.includes("?")
@@ -21,6 +22,7 @@ export default function SensorsLogPage() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const t = await r.text();
       setText(t);
+      setUpdatedAt(Date.now());
     } catch (e: any) {
       setError(e?.message ?? "Ошибка загрузки");
     }
@@ -44,7 +46,9 @@ export default function SensorsLogPage() {
       <div className="h1">Сведения с датчиков</div>
 
       <div className="muted" style={{ marginBottom: 12 }}>
-        Данные загружаются из файла log.txt
+        {updatedAt
+          ? `Обновлено: ${new Date(updatedAt).toLocaleTimeString()}`
+          : "Загрузка..."}
       </div>
 
       {error && (
