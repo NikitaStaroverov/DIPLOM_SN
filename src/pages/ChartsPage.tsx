@@ -34,6 +34,63 @@ const PARAMS = [
 ] as const;
 
 type ParamKey = (typeof PARAMS)[number]["key"];
+type ChartPoint = { ts: number; value: number };
+
+const ALL_MIN_POINTS = 1200;
+const ALL_MAX_POINTS = 4000;
+
+function adaptiveAllPointLimit(totalPoints: number) {
+  if (totalPoints <= ALL_MIN_POINTS) return totalPoints;
+  const adaptive = Math.round(900 + Math.log2(totalPoints) * 180);
+  return Math.max(ALL_MIN_POINTS, Math.min(ALL_MAX_POINTS, adaptive));
+}
+
+function downsampleMinMaxSeries(
+  data: ChartPoint[],
+  maxPoints: number,
+): ChartPoint[] {
+  if (data.length <= maxPoints || maxPoints < 3) return data;
+
+  const bucketCount = Math.max(1, Math.floor(maxPoints / 2));
+  const bucketSize = Math.ceil(data.length / bucketCount);
+  const reduced: ChartPoint[] = [];
+
+  for (let i = 0; i < data.length; i += bucketSize) {
+    const end = Math.min(i + bucketSize, data.length);
+    let min = data[i];
+    let max = data[i];
+
+    for (let j = i + 1; j < end; j++) {
+      const p = data[j];
+      if (p.value < min.value) min = p;
+      if (p.value > max.value) max = p;
+    }
+
+    if (min.ts <= max.ts) {
+      reduced.push(min);
+      if (max !== min) reduced.push(max);
+    } else {
+      reduced.push(max);
+      if (max !== min) reduced.push(min);
+    }
+  }
+
+  if (reduced[0] !== data[0]) reduced.unshift(data[0]);
+  if (reduced[reduced.length - 1] !== data[data.length - 1]) {
+    reduced.push(data[data.length - 1]);
+  }
+
+  if (reduced.length <= maxPoints) return reduced;
+
+  const step = Math.ceil(reduced.length / maxPoints);
+  const strided = reduced.filter((_, idx) => idx % step === 0);
+
+  if (strided[strided.length - 1] !== reduced[reduced.length - 1]) {
+    strided.push(reduced[reduced.length - 1]);
+  }
+
+  return strided;
+}
 
 function timeLabel(ts: number) {
   const d = new Date(ts);
@@ -126,6 +183,10 @@ export default function ChartsPage() {
     setPoints([]);
     setStatus("Загрузка лога…");
 
+    setZoomDomain(null);
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+
     async function tick() {
       try {
         const r = await fetch(withCacheBust(LOG_URL));
@@ -139,10 +200,11 @@ export default function ChartsPage() {
 
         const fresh = parsed.filter((p) => p.ts >= startTs);
         setLastFetchAt(Date.now());
+        if (!alive) return;
 
         // Первая загрузка
         if (lastTsRef.current === 0) {
-          setPoints(fresh.slice(-3000));
+          setPoints(fresh);
           lastTsRef.current = fresh.length
             ? Math.max(...fresh.map((p) => p.ts))
             : 0;
@@ -161,6 +223,8 @@ export default function ChartsPage() {
         }
 
         // Онлайн обновление
+        setPoints(fresh);
+
         const newOnes = fresh.filter((p) => p.ts > lastTsRef.current);
 
         if (!newOnes.length) {
@@ -169,13 +233,6 @@ export default function ChartsPage() {
         }
 
         lastTsRef.current = Math.max(...newOnes.map((p) => p.ts));
-
-        if (!alive) return;
-
-        setPoints((prev) => {
-          const merged = [...prev, ...newOnes];
-          return merged.slice(-3000);
-        });
 
         setStatus(`Онлайн: +${newOnes.length} новых точек`);
       } catch {
@@ -196,7 +253,7 @@ export default function ChartsPage() {
     return Array.from(new Set(points.map((p) => p.id))).sort();
   }, [points]);
 
-  const series = useMemo(() => {
+  const rawSeries = useMemo(() => {
     const key = param;
     return points
       .filter((p) => p.id === sensorId)
@@ -204,8 +261,16 @@ export default function ChartsPage() {
         const v = (p as any)[key] as number | undefined;
         return v == null ? null : { ts: p.ts, value: v };
       })
-      .filter(Boolean) as { ts: number; value: number }[];
+      .filter(Boolean) as ChartPoint[];
   }, [points, sensorId, param]);
+
+  const series = useMemo(() => {
+    if (windowKey !== "all") return rawSeries;
+    return downsampleMinMaxSeries(
+      rawSeries,
+      adaptiveAllPointLimit(rawSeries.length),
+    );
+  }, [rawSeries, windowKey]);
 
   return (
     <div className="card">
@@ -256,7 +321,12 @@ export default function ChartsPage() {
           </select>
         </label>
 
-        <div className="muted">Точек: {series.length}</div>
+        <div className="muted">
+          Точек: {series.length}
+          {windowKey === "all" && rawSeries.length > series.length
+            ? ` (из ${rawSeries.length})`
+            : ""}
+        </div>
       </div>
 
       <label
