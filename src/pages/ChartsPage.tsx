@@ -173,7 +173,7 @@ function intTick(v: number) {
   return String(Math.trunc(v));
 }
 
-function windowMs(key: "6h" | "24h" | "7d" | "all") {
+function windowMs(key: "6h" | "24h" | "7d" | "30d" | "all") {
   switch (key) {
     case "6h":
       return 6 * 60 * 60 * 1000;
@@ -181,6 +181,8 @@ function windowMs(key: "6h" | "24h" | "7d" | "all") {
       return 24 * 60 * 60 * 1000;
     case "7d":
       return 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return 30 * 24 * 60 * 60 * 1000;
     case "all":
       return Infinity;
   }
@@ -348,7 +350,9 @@ export default function ChartsPage() {
     setZoomDomain(clampDomainToBounds(shifted, seriesBounds));
   }
 
-  const [windowKey, setWindowKey] = useState<"6h" | "24h" | "7d" | "all">(
+  const [windowKey, setWindowKey] = useState<
+    "6h" | "24h" | "7d" | "30d" | "all"
+  >(
     "24h",
   );
 
@@ -606,6 +610,7 @@ export default function ChartsPage() {
           <option value="6h">6 часов</option>
           <option value="24h">24 часа</option>
           <option value="7d">7 дней</option>
+          <option value="30d">30 дней</option>
           <option value="all">Всё</option>
         </select>
       </label>
