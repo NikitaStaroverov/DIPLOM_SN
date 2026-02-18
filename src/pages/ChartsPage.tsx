@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { parseSplLogText, type SplPoint } from "../services/splLog";
+import { fetchSensorsLogText } from "../services/sensorsLogClient";
 import {
   LineChart,
   Line,
@@ -10,16 +11,6 @@ import {
   ResponsiveContainer,
   ReferenceArea,
 } from "recharts";
-
-function withCacheBust(url: string) {
-  return url.includes("?")
-    ? `${url}&t=${Date.now()}`
-    : `${url}?t=${Date.now()}`;
-}
-
-const LOG_URL = import.meta.env.DEV
-  ? "/api/sensors-log"
-  : "https://spl-log-proxy.starovierov98.workers.dev";
 
 const PARAMS = [
   { key: "m1", label: "Влажность почвы (m1, резистивный)" },
@@ -372,10 +363,7 @@ export default function ChartsPage() {
 
     async function tick() {
       try {
-        const r = await fetch(withCacheBust(LOG_URL));
-        if (!r.ok) return;
-
-        const text = await r.text();
+        const text = await fetchSensorsLogText();
         const parsed = parseSplLogText(text);
 
         const startTs =

@@ -1,26 +1,15 @@
 import React, { useEffect, useState } from "react";
+import { fetchSensorsLogText } from "../services/sensorsLogClient";
 
 export default function SensorsLogPage() {
   const [text, setText] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
-  function withCacheBust(url: string) {
-    return url.includes("?")
-      ? `${url}&t=${Date.now()}`
-      : `${url}?t=${Date.now()}`;
-  }
-
-  const LOG_URL = import.meta.env.DEV
-    ? "/api/sensors-log"
-    : "https://spl-log-proxy.starovierov98.workers.dev";
-
   async function loadLog() {
     try {
       setError("");
-      const r = await fetch(withCacheBust(LOG_URL));
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const t = await r.text();
+      const t = await fetchSensorsLogText();
       setText(t);
       setUpdatedAt(Date.now());
     } catch (e: any) {
