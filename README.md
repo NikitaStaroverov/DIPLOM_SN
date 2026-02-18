@@ -24,6 +24,11 @@ npm run dev
 
 Откройте: http://localhost:5173
 
+## GitHub Pages note
+
+When deploying to GitHub Pages, there is no runtime backend.  
+`npm run deploy` now prepares a static snapshot at `public/api/sensors-log` before build, so `/api/sensors-log` is available from static hosting as well.
+
 ## Яндекс.Погода (API)
 
 1. Создайте файл `.env.local` рядом с `package.json`:

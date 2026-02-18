@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",
+    "prepare-log": "node scripts/fetchSensorsLogForPages.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
+    "predeploy": "npm run prepare-log && npm run build",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {

@@ -1,4 +1,10 @@
-const DEFAULT_SENSORS_LOG_ENDPOINTS = ["/api/sensors-log"];
+function normalizeBase(baseUrl: string) {
+  return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+}
+
+const BASE_API_ENDPOINT = `${normalizeBase(import.meta.env.BASE_URL)}api/sensors-log`;
+const ROOT_API_ENDPOINT = "/api/sensors-log";
+const DEFAULT_SENSORS_LOG_ENDPOINTS = [BASE_API_ENDPOINT, ROOT_API_ENDPOINT];
 
 const CF_WORKER_FALLBACK = "https://spl-log-proxy.starovierov98.workers.dev";
 const REQUEST_TIMEOUT_MS = 7000;
